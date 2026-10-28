@@ -326,9 +326,11 @@ summary{cursor:pointer;font-family:var(--f-mono);font-size:11px;letter-spacing:.
       <button class="btn ghost sm" id="copy">Copy</button>
       <button class="btn ghost sm" id="restore">Restore</button>
       <button class="btn ghost sm" id="theme">Toggle theme</button>
+      <button class="btn ghost sm" id="refresh">Force update</button>
       <button class="btn ghost sm" id="reset">Reset progress</button>
     </div>
     <p class="note" id="ioNote"></p>
+    <p class="note" id="buildstamp" style="font-family:var(--f-mono);font-size:11px"></p>
   </details>
 </section>
 
@@ -13795,6 +13797,31 @@ window.QBANK = (window.QBANK || []).concat([
         }
         break;
       }
+      case "refresh": {
+        // Escape hatch for a stuck cache: drop the service worker and every
+        // cache, then reload past the browser's own HTTP cache. Progress and
+        // piles live in localStorage and are untouched.
+        $("ioNote").textContent = "Fetching the newest version…";
+        var done = function () {
+          var u = location.href.split("#")[0].split("?")[0];
+          location.replace(u + "?v=" + Date.now());
+        };
+        var jobs = [];
+        try {
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+              return Promise.all(rs.map(function (r) { return r.unregister(); }));
+            }));
+          }
+          if (window.caches && caches.keys) {
+            jobs.push(caches.keys().then(function (ks) {
+              return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+            }));
+          }
+        } catch (e) { /* ignore — reload anyway */ }
+        if (jobs.length) Promise.all(jobs).then(done, done); else done();
+        break;
+      }
       case "theme": {
         var cur = document.documentElement.getAttribute("data-theme");
         var nxt = cur === "dark" ? "light" : (cur === "light" ? "" : "dark");
@@ -13827,6 +13854,13 @@ window.QBANK = (window.QBANK || []).concat([
     document.documentElement.setAttribute("data-theme", settings.theme);
   }
   $("deckcount").textContent = BANK.length + " cards";
+
+  // Version marker, so you can tell at a glance which build you are looking at.
+  // BUILD is replaced by build.js; it stays "dev" in the multi-file source.
+  var BUILD = "2026-10-28 18:05";
+  var nFigs = 0; for (var fk in FIGS) if (Object.prototype.hasOwnProperty.call(FIGS, fk)) nFigs++;
+  $("buildstamp").textContent =
+    "Build " + BUILD + " · " + BANK.length + " cards · " + nFigs + " figures";
   renderChips();
   show("home");
 })();
