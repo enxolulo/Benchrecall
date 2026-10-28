@@ -5,7 +5,7 @@
    After uploading a new index.html, bump CACHE below — otherwise the old
    version keeps being served from the cache. */
 
-const CACHE = "bench-recall-v1";
+const CACHE = "bench-recall-v7";
 
 const CORE = ["./", "./index.html"];
 
