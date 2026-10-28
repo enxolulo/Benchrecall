@@ -2,10 +2,9 @@
    index.html is fully self-contained, so this only guarantees that the browser
    keeps a copy instead of relying on its ordinary HTTP cache.
 
-   After uploading a new index.html, bump CACHE below — otherwise the old
-   version keeps being served from the cache. */
+   After uploading a new index.html, bump CACHE below. */
 
-const CACHE = "bench-recall-v7";
+const CACHE = "bench-recall-v9";
 
 const CORE = ["./", "./index.html"];
 
@@ -28,15 +27,29 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Lets the page force an immediate takeover after an update.
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
+});
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   if (new URL(req.url).origin !== self.location.origin) return;
 
-  // Network first, so a newly uploaded version is picked up;
-  // fall back to the cached copy when offline.
+  // The page itself must never be served from the browser's own HTTP cache, or
+  // a stale copy survives every redeploy. `cache: "no-store"` forces a real
+  // request for the document; everything else may use the normal cache.
+  const isPage =
+    req.mode === "navigate" ||
+    (req.headers.get("accept") || "").indexOf("text/html") !== -1;
+
+  const fromNetwork = isPage
+    ? fetch(req.url, { cache: "no-store", credentials: "same-origin" })
+    : fetch(req);
+
   event.respondWith(
-    fetch(req)
+    fromNetwork
       .then((res) => {
         if (res && res.status === 200 && res.type === "basic") {
           const copy = res.clone();
@@ -44,6 +57,6 @@ self.addEventListener("fetch", (event) => {
         }
         return res;
       })
-      .catch(() => caches.match(req).then((hit) => hit || caches.match("./index.html")))
+      .catch(() => caches.match(req).then((c) => c || caches.match("./index.html")))
   );
 });
